@@ -15,7 +15,6 @@ end
 module RibcageEnv : Env = struct
   type t = (string list ref * value list ref) list
   exception VariableNotBound
-  exception InvalidLengths
 
   let empty_env = fun () -> []
 
@@ -72,7 +71,6 @@ module AssocEnv : Env = struct
   let rec has_binding vr = function
     | [] -> false
     | (vr', _) :: t -> vr = vr' || has_binding vr t
-
 end
 
 module SymbolicEnv : Env = struct
@@ -104,6 +102,39 @@ module SymbolicEnv : Env = struct
     | Extension(vr', _, env') -> vr = vr' || has_binding vr env'
 end
 
+module ProcEnv = struct
+  type t = string -> value
+  exception VariableNotBound
+  let empty_env : t = fun _ -> raise VariableNotBound
+  let apply_env (env : t) (vr : string) : value = env vr
+  let extend_env (vr : string) (vl : value) (env : t) : t = 
+    fun svr -> if svr = vr then vl else apply_env env svr
+end
 
+type lexpr = 
+  | Term of string
+  | Abstraction of string * lexpr
+  | Application of lexpr * lexpr
 
+module type LC = sig
+  type t = lexpr
+  type s = string
+  val var_exp : s -> t
+  val lambda_exp : s -> t -> t
+  val app_exp : t -> t -> t
+  val is_var_exp : t -> bool
+  val is_lambda_exp : t -> bool
+  val is_app_exp : t -> bool
+  val var_of_var_exp : t -> s
+  val bvar_of_lambda_exp : t -> s
+  val body_of_lambda_exp : t -> t
+  val rator_of_app_exp : t -> t
+  val rand_of_app_exp : t -> t
+end
 
+module LambdaCalc (L : LC) = struct
+  let rec occurs_free (sv : L.s) (t : L.t) : bool = 
+    if L.is_var_exp t then sv = L.var_of_var_exp t else 
+    (if L.is_lambda_exp t then (sv != L.bvar_of_lambda_exp t && occurs_free sv (L.body_of_lambda_exp t)) else
+       (occurs_free sv (L.rator_of_app_exp t) || occurs_free sv (L.rand_of_app_exp t)))
+end
