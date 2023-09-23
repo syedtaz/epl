@@ -21,39 +21,44 @@ type exp =
 (* Binding *)
   | Var of string
   | Let of string * exp * exp
+(* Procesures *)
+  | Proc of string * exp
+  | Call of exp * exp
 
 type exp_val = 
   | Int of int
   | Bool of bool
   | List of cons
+  | Procedure of string * exp * (string * exp_val) list
 and cons =
   | Nil
   | Cons of exp_val * cons
 
   module Value = struct
-    exception NotNumeric
-    exception NotBoolean
-    exception NotEmpty
-    exception NotList
+    exception InvalidArgument
     let nval n = Int n
     let bval b = Bool b
     let lval v = List v
     let cons a lst = Cons(a, lst)
+    let procedure vr body env = Procedure(vr, body, env)
     let car lst = match lst with
-      | Nil -> raise NotEmpty
+      | Nil -> raise InvalidArgument
       | Cons(a, _) -> a
     let cdr lst = match lst with
-      | Nil -> raise NotEmpty
+      | Nil -> raise InvalidArgument
       | Cons(_, b) -> b
     let num_of_exp = function
       | Int n -> n
-      | Bool _ | List _ -> raise NotNumeric
+      | Bool _ | List _ | Procedure _ -> raise InvalidArgument
     let bool_of_exp = function
       | Bool b -> b
-      | Int _ | List _ -> raise NotBoolean
+      | Int _ | List _ | Procedure _ -> raise InvalidArgument
     let lst_of_exp = function
       | List l -> l
-      | Int _ | Bool _ -> raise NotList
+      | Int _ | Bool _ | Procedure _ -> raise InvalidArgument
+    let proc_of_exp = function
+      | Procedure(vr, body, env) -> (vr, body, env)
+      | Int _ | Bool _ | List _ -> raise InvalidArgument
   end
 
 module Environment  = struct
@@ -135,3 +140,12 @@ let rec value_of (e : exp) (env : Environment.t) = match e with
   | Empty(e') -> (match value_of e' env |> Value.lst_of_exp with
     | Nil -> Value.bval true
     | Cons _ -> Value.bval false)
+  | Proc(vr, body) -> Value.procedure vr body env
+  | Call(e1, e2) -> 
+      let proc = Value.proc_of_exp (value_of e1 env)
+      and arg = value_of e2 env in
+      apply_procedure proc arg
+and apply_procedure proc vl = 
+    let (vr, body, saved_env) = proc in
+    value_of body (Environment.extend_env vr vl saved_env)
+      
